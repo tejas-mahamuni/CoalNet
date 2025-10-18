@@ -12,6 +12,7 @@ import DashboardPage from "./pages/DashboardPage";
 import InputPage from "./pages/InputPage";
 import UploadPage from "./pages/UploadPage";
 import VisualizationPage from "./pages/VisualizationPage";
+import UserPage from "./pages/UserPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -56,6 +57,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <VisualizationPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/user"
+              element={
+                <ProtectedRoute>
+                  <UserPage />
                 </ProtectedRoute>
               }
             />
