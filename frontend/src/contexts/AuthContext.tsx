@@ -69,18 +69,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      try {
-        console.log('Auth state changed:', user ? 'User logged in' : 'User logged out');
-        setCurrentUser(user);
-      } catch (error) {
-        console.error('Auth state listener error:', error);
-      } finally {
-        setLoading(false);
-      }
-    });
+    // Handle case where Firebase auth might not be initialized
+    if (!auth) {
+      console.warn('Firebase auth not initialized. Setting loading to false.');
+      setLoading(false);
+      return;
+    }
 
-    return unsubscribe;
+    try {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        try {
+          console.log('Auth state changed:', user ? 'User logged in' : 'User logged out');
+          setCurrentUser(user);
+        } catch (error) {
+          console.error('Auth state listener error:', error);
+        } finally {
+          setLoading(false);
+        }
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Failed to set up auth state listener:', error);
+      setLoading(false);
+    }
   }, []);
 
   const value: AuthContextType = {
