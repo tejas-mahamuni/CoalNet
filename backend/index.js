@@ -452,93 +452,9 @@ const allMinesData = [
 // Seed initial data
 const seedData = async () => {
   try {
-    // Seed all 45 mines if empty
+    // Seed all 45 mines if the collection is empty
     const mineCount = await Mine.countDocuments();
-    if (mineCount === 0) {
-      const minesToInsert = allMinesData.map(mine => ({
-        ...mine,
-        status: 'active'
-      }));
-      await Mine.insertMany(minesToInsert);
-      console.log(`✅ ${allMinesData.length} mines seeded!`);
-    }
-
-    // Seed emissions data - month-wise for all mines (last 12 months)
-    const emissionCount = await Emission.countDocuments();
-    if (emissionCount === 0) {
-      // Wait a bit for mines to be created
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const mines = await Mine.find();
-      
-      if (mines.length > 0) {
-        const allEmissions = [];
-        const twelveMonthsAgo = new Date();
-        twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
-        
-        // Base emission multipliers for realistic variation by mine size
-        const getEmissionBase = (mineIndex) => {
-          // Larger mines (first 15) have higher emissions, with variation
-          if (mineIndex < 15) return 1500 + (mineIndex * 100) + Math.random() * 500;
-          // Medium mines (15-30)
-          if (mineIndex < 30) return 1000 + ((mineIndex - 15) * 80) + Math.random() * 400;
-          // Smaller mines (30+)
-          return 600 + ((mineIndex - 30) * 50) + Math.random() * 300;
-        };
-
-        mines.forEach((mine, mineIndex) => {
-          // Generate monthly data for last 12 months
-          for (let month = 0; month < 12; month++) {
-            const date = new Date(twelveMonthsAgo);
-            date.setMonth(date.getMonth() + month);
-            date.setDate(1); // Set to first day of month for consistency
-            
-            const baseEmission = getEmissionBase(mineIndex);
-            // Add seasonal variation (slightly higher in certain months)
-            const seasonalFactor = [1.1, 1.05, 1.0, 0.95, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15, 1.1, 1.05][month];
-            const monthlyEmission = baseEmission * seasonalFactor * (0.9 + Math.random() * 0.2);
-            
-            // Scope distribution (typical for coal mining)
-            const scope1 = monthlyEmission * 0.55; // Direct emissions (fuel, methane)
-            const scope2 = monthlyEmission * 0.27; // Indirect emissions (electricity)
-            const scope3 = monthlyEmission * 0.18; // Other indirect emissions (transport, etc.)
-            
-            const totalEmissions = Math.round(scope1 + scope2 + scope3);
-            const targetEmissions = Math.round(totalEmissions * (0.85 + Math.random() * 0.1)); // 85-95% of actual
-            
-            allEmissions.push({
-              mineId: mine._id,
-              mineName: mine.name,
-              date: date,
-              period: 'monthly',
-              scope1: Math.round(scope1),
-              scope2: Math.round(scope2),
-              scope3: Math.round(scope3),
-              totalEmissions: totalEmissions,
-              fuelConsumption: Math.round(scope1 * 0.6), // liters/units
-              electricityUsage: Math.round(scope2 * 1.2), // kWh
-              methaneEmission: Math.round(scope1 * 0.4), // CH4 equivalent
-              transportEmissions: Math.round(scope3 * 0.5), // transport portion
-              targetEmissions: targetEmissions,
-              status: month < 10 ? 'verified' : (month < 11 ? 'pending' : 'draft'), // Recent months verified
-              uploadedBy: 'system',
-              createdAt: new Date(date.getTime() + 86400000), // Day after month start
-              updatedAt: new Date()
-            });
-          }
-        });
-
-        // Insert in batches to avoid memory issues
-        const batchSize = 100;
-        for (let i = 0; i < allEmissions.length; i += batchSize) {
-          const batch = allEmissions.slice(i, i + batchSize);
-          await Emission.insertMany(batch);
-        }
-        
-        console.log(`✅ ${allEmissions.length} monthly emission records seeded for ${mines.length} mines!`);
-        console.log(`   Data range: ${twelveMonthsAgo.toLocaleDateString()} to ${new Date().toLocaleDateString()}`);
-      }
-    } else if (mineCount < allMinesData.length) {
-      // If some mines exist but not all, add missing ones
+    if (mineCount < allMinesData.length) {
       const existingMines = await Mine.find().select('name');
       const existingNames = existingMines.map(m => m.name);
       const missingMines = allMinesData.filter(m => !existingNames.includes(m.name));
@@ -551,6 +467,72 @@ const seedData = async () => {
         await Mine.insertMany(minesToInsert);
         console.log(`✅ Added ${missingMines.length} missing mines!`);
       }
+    }
+
+    // Clear existing emission data
+    await Emission.deleteMany({});
+    console.log('🧹 Cleared existing emission data.');
+
+    // Seed emissions data - month-wise for all mines (last 12 months)
+    const mines = await Mine.find();
+    if (mines.length > 0) {
+      const allEmissions = [];
+      const twelveMonthsAgo = new Date();
+      twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+      
+      const getEmissionBase = (mineIndex) => {
+        if (mineIndex < 15) return 1500 + (mineIndex * 100) + Math.random() * 500;
+        if (mineIndex < 30) return 1000 + ((mineIndex - 15) * 80) + Math.random() * 400;
+        return 600 + ((mineIndex - 30) * 50) + Math.random() * 300;
+      };
+
+      mines.forEach((mine, mineIndex) => {
+        for (let month = 0; month < 12; month++) {
+          const date = new Date(twelveMonthsAgo);
+          date.setMonth(date.getMonth() + month);
+          date.setDate(1);
+          
+          const baseEmission = getEmissionBase(mineIndex);
+          const seasonalFactor = [1.1, 1.05, 1.0, 0.95, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15, 1.1, 1.05][month];
+          const monthlyEmission = baseEmission * seasonalFactor * (0.9 + Math.random() * 0.2);
+          
+          const scope1 = monthlyEmission * 0.55;
+          const scope2 = monthlyEmission * 0.27;
+          const scope3 = monthlyEmission * 0.18;
+          
+          const totalEmissions = Math.round(scope1 + scope2 + scope3);
+          const targetEmissions = Math.round(totalEmissions * (0.85 + Math.random() * 0.1));
+          
+          allEmissions.push({
+            mineId: mine._id,
+            mineName: mine.name,
+            date: date,
+            period: 'monthly',
+            scope1: Math.round(scope1),
+            scope2: Math.round(scope2),
+            scope3: Math.round(scope3),
+            totalEmissions: totalEmissions,
+            fuelConsumption: Math.round(scope1 * 0.6),
+            electricityUsage: Math.round(scope2 * 1.2),
+            methaneEmission: Math.round(scope1 * 0.4),
+            transportEmissions: Math.round(scope3 * 0.5),
+            targetEmissions: targetEmissions,
+            status: month < 10 ? 'verified' : (month < 11 ? 'pending' : 'draft'),
+            uploadedBy: 'system',
+            createdAt: new Date(date.getTime() + 86400000),
+            updatedAt: new Date()
+          });
+        }
+      });
+
+      const batchSize = 100;
+      for (let i = 0; i < allEmissions.length; i += batchSize) {
+        const batch = allEmissions.slice(i, i + batchSize);
+        await Emission.insertMany(batch);
+      }
+      
+      console.log(`✅ ${allEmissions.length} monthly emission records seeded for ${mines.length} mines!`);
+      console.log(`   Data range: ${twelveMonthsAgo.toLocaleDateString()} to ${new Date().toLocaleDateString()}`);
     }
 
     // Seed visualization data if empty
