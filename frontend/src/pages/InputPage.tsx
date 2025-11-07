@@ -31,6 +31,10 @@ const InputPage = () => {
     const fetchMines = async () => {
       try {
         const data = await api.getMines();
+        if (!Array.isArray(data)) {
+          console.error("API returned non-array data for mines:", data);
+          return;
+        }
         setMines(data);
       } catch (error) {
         console.error("Error fetching mines:", error);
