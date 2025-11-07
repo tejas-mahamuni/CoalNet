@@ -138,11 +138,11 @@ app.get('/api/dashboard', async (req, res) => {
     const { mineName, period = 'daily' } = req.query;
     let mineNamesToFetch = [];
 
-    if (!mineName || (mineName !== 'all' && typeof mineName !== 'string')) {
+    if (!mineName && mineName !== 'all') {
       return res.status(400).json({ error: 'mineName query parameter is required' });
     }
 
-    if (mineName === 'all') {
+    if (mineName === 'all' || !mineName) { // Handle missing mineName the same as 'all'
       // Fetch names of all active mines
       const activeMines = await Mine.find({ status: 'active' }).select('name');
       mineNamesToFetch = activeMines.map(mine => mine.name);
@@ -157,7 +157,7 @@ app.get('/api/dashboard', async (req, res) => {
     const today = new Date();
 
     for (const currentMineName of mineNamesToFetch) {
-      const MineEmission = getMineEmissionModel(mineName);
+      const MineEmission = getMineEmissionModel(currentMineName);
       switch (period) {
         case 'daily':
           startDate.setDate(today.getDate() - 7);
