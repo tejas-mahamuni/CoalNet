@@ -68,7 +68,7 @@ const DashboardPage = () => {
       
       try {
         const filters: any = {};
-        if (selectedMine !== 'all') {
+        if (selectedMine !== 'all') { // Ensure mineName is always sent, even if 'all'
           filters.mineName = selectedMine;
         }
         if (selectedPeriod !== 'all') {
