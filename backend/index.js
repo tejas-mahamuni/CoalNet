@@ -96,6 +96,61 @@ const Data = mongoose.model('Data', dataSchema);
 const Mine = mongoose.model('Mine', mineSchema);
 const Emission = mongoose.model('Emission', emissionSchema);
 
+// POST /api/emissions - Add new emission data
+app.post('/api/emissions', async (req, res) => {
+  try {
+    const {
+      mineId,
+      date,
+      fuel_used,
+      electricity_used,
+      methane_emission,
+      transport_used,
+    } = req.body;
+
+    // Find the mine to get its name
+    const mine = await Mine.findById(mineId);
+    if (!mine) {
+      return res.status(404).json({ error: 'Mine not found' });
+    }
+
+    // Emission calculations
+    const fuel_emission = fuel_used * 2.68;
+    const electricity_emission = electricity_used * 0.82;
+    const methane_co2e = methane_emission * 25;
+    const transport_emission = transport_used * 2.68;
+
+    const scope1 = fuel_emission + methane_co2e;
+    const scope2 = electricity_emission;
+    const scope3 = transport_emission;
+    const totalEmissions = scope1 + scope2 + scope3;
+
+    const newEmission = new Emission({
+      mineId,
+      mineName: mine.name,
+      date,
+      period: 'daily',
+      fuelConsumption: fuel_used,
+      electricityUsage: electricity_used,
+      methaneEmission: methane_emission,
+      transportEmissions: transport_used,
+      scope1,
+      scope2,
+      scope3,
+      totalEmissions,
+      status: 'pending',
+      uploadedBy: 'user',
+    });
+
+    await newEmission.save();
+    res.status(201).json(newEmission);
+  } catch (err) {
+    console.error('Error adding emission data:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // Sample data for visualization
 const visualizationData = [
   {
