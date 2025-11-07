@@ -136,19 +136,27 @@ app.get('/api/mines', async (req, res) => {
 app.get('/api/dashboard', async (req, res) => {
   try {
     const { mineName, period = 'daily' } = req.query;
+    let mineNamesToFetch = [];
 
-    if (!mineName) {
+    if (!mineName || (mineName !== 'all' && typeof mineName !== 'string')) {
       return res.status(400).json({ error: 'mineName query parameter is required' });
+    }
+
+    if (mineName === 'all') {
+      // Fetch names of all active mines
+      const activeMines = await Mine.find({ status: 'active' }).select('name');
+      mineNamesToFetch = activeMines.map(mine => mine.name);
+      if (mineNamesToFetch.length === 0) {
+        return res.status(200).json({ overview: { totalMines: 0, activeMines: 0, totalEmissions: 0, targetReduction: 100, currentReduction: 0 }, monthlyEmissions: [], scopeBreakdown: [], recentActivities: [], alerts: [] });
+      }
+    } else {
+      mineNamesToFetch = [mineName];
     }
 
     let data = [];
     const today = new Date();
-    let startDate = new Date();
 
-    if (mineName === 'all') {
-      // Aggregation for all mines is a complex operation and will be implemented in a future update.
-      return res.status(501).json({ message: 'Aggregation for all mines is not yet implemented.' });
-    } else {
+    for (const currentMineName of mineNamesToFetch) {
       const MineEmission = getMineEmissionModel(mineName);
       switch (period) {
         case 'daily':
