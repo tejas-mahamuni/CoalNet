@@ -2,6 +2,7 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const { generateDummyData } = require('./migrateData');
 require('dotenv').config();
 
 const app = express();
@@ -42,21 +43,25 @@ const mineSchema = new mongoose.Schema({
   status: { type: String, enum: ['active', 'inactive'], default: 'active' },
 });
 
-const Mine = mongoose.model('Mine', mineSchema);
+const Mine = mongoose.models.Mine || mongoose.model('Mine', mineSchema);
 
 // New Daily Emission Schema for mine-specific collections
 const dailyEmissionSchema = new mongoose.Schema({
-  date: { type: Date, required: true, unique: true },
-  fuel_used: { type: Number, required: true },
-  electricity_used: { type: Number, required: true },
-  explosives_used: { type: Number, required: true },
-  transport_fuel_used: { type: Number, required: true },
-  methane_emissions: { type: Number, required: true },
-  carbon_emissions: { type: Number, required: true },
+  date: { type: Date, required: true },
+  fuel_used: { type: Number, required: true }, // litres
+  electricity_used: { type: Number, required: true }, // kWh
+  explosives_used: { type: Number, default: 0 }, // kg, optional
+  methane_emissions_ch4: { type: Number, required: true }, // kg CH4
+  transport_fuel_used: { type: Number, required: true }, // litres/km
+  fuel_emission: { type: Number, required: true }, // calculated
+  electricity_emission: { type: Number, required: true }, // calculated
+  explosives_emission: { type: Number, required: true }, // calculated
+  methane_emissions_co2e: { type: Number, required: true }, // calculated
+  transport_emission: { type: Number, required: true }, // calculated
   scope1: { type: Number, required: true },
   scope2: { type: Number, required: true },
   scope3: { type: Number, required: true },
-  total_emissions: { type: Number, required: true },
+  total_carbon_emission: { type: Number, required: true },
 });
 
 // Function to get or create a model for a mine's emission data
@@ -80,42 +85,87 @@ app.post('/api/emissions', async (req, res) => {
       return res.status(404).json({ error: 'Mine not found' });
     }
 
-    // Emission Calculations
-    const fuel_co2e = parseFloat(fuel_used) * 2.68;
-    const explosives_co2e = parseFloat(explosives_used) * 0.5;
-    const electricity_co2e = parseFloat(electricity_used) * 0.82;
-    const transport_co2e = parseFloat(transport_fuel_used) * 2.68;
-    const methane_emissions_ch4 = parseFloat(fuel_used) * 0.02;
-    const methane_emissions_co2e = methane_emissions_ch4 * 25;
-
-    const scope1 = fuel_co2e + explosives_co2e + methane_emissions_co2e;
-    const scope2 = electricity_co2e;
-    const scope3 = transport_co2e;
-    const carbon_emissions = fuel_co2e + explosives_co2e + transport_co2e + electricity_co2e;
-    const total_emissions = scope1 + scope2 + scope3;
-
     const MineEmission = getMineEmissionModel(mine.name);
 
-    const newEmission = new MineEmission({
-      date,
-      fuel_used: parseFloat(fuel_used),
-      electricity_used: parseFloat(electricity_used),
-      explosives_used: parseFloat(explosives_used),
-      transport_fuel_used: parseFloat(transport_fuel_used),
-      methane_emissions: methane_emissions_co2e,
-      carbon_emissions,
-      scope1,
-      scope2,
-      scope3,
-      total_emissions,
-    });
+    // Check if data already exists for this date
+    const existingEmission = await MineEmission.findOne({ date: new Date(date) });
 
-    await newEmission.save();
-    res.status(201).json(newEmission);
-  } catch (err) {
-    if (err.code === 11000) { // Handle duplicate date entry
-      return res.status(409).json({ error: 'Emission data for this date already exists for this mine.' });
+    if (existingEmission) {
+      // Add to existing data
+      const updatedFuelUsed = existingEmission.fuel_used + parseFloat(fuel_used);
+      const updatedElectricityUsed = existingEmission.electricity_used + parseFloat(electricity_used);
+      const updatedExplosivesUsed = existingEmission.explosives_used + parseFloat(explosives_used);
+      const updatedTransportFuelUsed = existingEmission.transport_fuel_used + parseFloat(transport_fuel_used);
+
+      // Recalculate emissions based on new totals
+      const fuel_emission = updatedFuelUsed * 2.68;
+      const explosives_emission = updatedExplosivesUsed * 1.5;
+      const electricity_emission = updatedElectricityUsed * 0.82;
+      const transport_emission = updatedTransportFuelUsed * 2.68;
+      const methane_emissions_co2e = 0.02 * updatedFuelUsed * 28;
+
+      const carbon_emission = fuel_emission + electricity_emission + transport_emission + explosives_emission;
+      const total_carbon_emission = carbon_emission + methane_emissions_co2e;
+
+      const scope1 = fuel_emission + explosives_emission + methane_emissions_co2e;
+      const scope2 = electricity_emission;
+      const scope3 = transport_emission;
+
+      // Update existing record
+      existingEmission.fuel_used = updatedFuelUsed;
+      existingEmission.electricity_used = updatedElectricityUsed;
+      existingEmission.explosives_used = updatedExplosivesUsed;
+      existingEmission.transport_fuel_used = updatedTransportFuelUsed;
+      existingEmission.fuel_emission = fuel_emission;
+      existingEmission.electricity_emission = electricity_emission;
+      existingEmission.explosives_emission = explosives_emission;
+      existingEmission.methane_emissions_co2e = methane_emissions_co2e;
+      existingEmission.transport_emission = transport_emission;
+      existingEmission.scope1 = scope1;
+      existingEmission.scope2 = scope2;
+      existingEmission.scope3 = scope3;
+      existingEmission.total_carbon_emission = total_carbon_emission;
+
+      await existingEmission.save();
+      res.status(200).json(existingEmission);
+    } else {
+      // Create new record
+    // Emission Calculations
+    const fuel_emission = parseFloat(fuel_used) * 2.68;
+    const explosives_emission = parseFloat(explosives_used) * 1.5;
+    const electricity_emission = parseFloat(electricity_used) * 0.82;
+    const transport_emission = parseFloat(transport_fuel_used) * 2.68;
+    const methane_emissions_co2e = 0.02 * parseFloat(fuel_used) * 28;
+
+    const carbon_emission = fuel_emission + electricity_emission + transport_emission + explosives_emission;
+    const total_carbon_emission = carbon_emission + methane_emissions_co2e;
+
+    const scope1 = fuel_emission + explosives_emission + methane_emissions_co2e;
+    const scope2 = electricity_emission;
+    const scope3 = transport_emission;
+
+      const newEmission = new MineEmission({
+        date,
+        fuel_used: parseFloat(fuel_used),
+        electricity_used: parseFloat(electricity_used),
+        explosives_used: parseFloat(explosives_used),
+        methane_emissions_ch4: 0.02 * parseFloat(fuel_used),
+        transport_fuel_used: parseFloat(transport_fuel_used),
+        fuel_emission,
+        electricity_emission,
+        explosives_emission,
+        methane_emissions_co2e,
+        transport_emission,
+        scope1,
+        scope2,
+        scope3,
+        total_carbon_emission,
+      });
+
+      await newEmission.save();
+      res.status(201).json(newEmission);
     }
+  } catch (err) {
     console.error('Error adding emission data:', err);
     res.status(500).json({ error: 'An internal server error occurred.' });
   }
@@ -138,69 +188,176 @@ app.get('/api/dashboard', async (req, res) => {
     const { mineName, period = 'daily' } = req.query;
     let mineNamesToFetch = [];
 
-    if (!mineName && mineName !== 'all') {
-      return res.status(400).json({ error: 'mineName query parameter is required' });
-    }
-
-    if (mineName === 'all' || !mineName) { // Handle missing mineName the same as 'all'
+    if (!mineName || mineName === 'all') { // Handle missing mineName the same as 'all'
       // Fetch names of all active mines
       const activeMines = await Mine.find({ status: 'active' }).select('name');
       mineNamesToFetch = activeMines.map(mine => mine.name);
-      if (mineNamesToFetch.length === 0) {
-        return res.status(200).json({ overview: { totalMines: 0, activeMines: 0, totalEmissions: 0, targetReduction: 100, currentReduction: 0 }, monthlyEmissions: [], scopeBreakdown: [], recentActivities: [], alerts: [] });
-      }
     } else {
       mineNamesToFetch = [mineName];
     }
 
-    let data = [];
+    if (mineNamesToFetch.length === 0) {
+      return res.status(200).json({
+        overview: { totalMines: 0, activeMines: 0, totalEmissions: 0, targetReduction: 100, currentReduction: 0 },
+        chartData: [],
+        scopeBreakdown: [],
+        monthlyEmissions: [],
+        recentActivities: [],
+        alerts: []
+      });
+    }
+
+    let allData = [];
     const today = new Date();
 
     for (const currentMineName of mineNamesToFetch) {
       const MineEmission = getMineEmissionModel(currentMineName);
+      let data = [];
+      let startDate = new Date(today);
+
       switch (period) {
         case 'daily':
           startDate.setDate(today.getDate() - 7);
           data = await MineEmission.find({ date: { $gte: startDate, $lte: today } }).sort({ date: 1 });
           break;
         case 'weekly':
-          // Simplified: fetch last 4 weeks of daily data for now.
+          // Fetch last 4 weeks of daily data
           startDate.setDate(today.getDate() - 28);
           data = await MineEmission.find({ date: { $gte: startDate, $lte: today } }).sort({ date: 1 });
           break;
         case 'monthly':
-          // Simplified: fetch last 6 months of daily data for now.
+          // Fetch last 6 months of daily data
           startDate.setMonth(today.getMonth() - 6);
           data = await MineEmission.find({ date: { $gte: startDate, $lte: today } }).sort({ date: 1 });
           break;
         default:
           return res.status(400).json({ error: 'Invalid period specified' });
       }
+
+      // Add mine name to each data point
+      data = data.map(item => ({ ...item.toObject(), mineName: currentMineName }));
+      allData = allData.concat(data);
     }
 
+    // Calculate overview stats
+    const totalMines = mineNamesToFetch.length;
+    const activeMines = totalMines; // All fetched mines are active
+    const totalEmissions = allData.reduce((sum, item) => sum + ((item.scope1 || 0) + (item.scope2 || 0) + (item.scope3 || 0)), 0); // Keep in kg
+    const targetReduction = 100; // Placeholder
+    const currentReduction = totalEmissions > 0 ? Math.min(50, (totalEmissions / 1000) * 100) : 0; // Placeholder calculation
+
     // Format data for the dashboard
-    const chartData = data.map(item => ({
+    const chartData = allData.map(item => ({
       date: item.date.toISOString().split('T')[0],
-      totalEmissions: item.total_emissions,
-      scope1: item.scope1,
-      scope2: item.scope2,
-      scope3: item.scope3,
+      totalEmissions: item.total_carbon_emission || 0,
+      scope1: item.scope1 || 0,
+      scope2: item.scope2 || 0,
+      scope3: item.scope3 || 0,
+      mineName: item.mineName,
     }));
 
-    const scopeBreakdown = data.reduce((acc, item) => {
-        acc.scope1 += item.scope1;
-        acc.scope2 += item.scope2;
-        acc.scope3 += item.scope3;
+    const scopeBreakdown = allData.reduce((acc, item) => {
+        acc.scope1 += (item.scope1 || 0);
+        acc.scope2 += (item.scope2 || 0);
+        acc.scope3 += (item.scope3 || 0);
+        acc.methane += (item.methane_emissions_co2e || 0);
         return acc;
-    }, { scope1: 0, scope2: 0, scope3: 0 });
+    }, { scope1: 0, scope2: 0, scope3: 0, methane: 0 });
 
-    res.json({ 
-        chartData, 
+    // Group data based on period
+    let periodEmissions = [];
+    if (period === 'daily') {
+      // For daily, show individual days with dates
+      periodEmissions = allData.map(item => ({
+        period: item.date.toISOString().split('T')[0], // YYYY-MM-DD
+        emissions: (item.total_carbon_emission || 0) / 1000, // Convert kg to tonnes
+        methane: (item.methane_emissions_ch4 || 0) / 1000, // Convert kg to tonnes CH4
+        methane_co2e: (item.methane_emissions_co2e || 0) / 1000, // Convert kg to tonnes CO2e
+        target: 0
+      }));
+    } else if (period === 'weekly') {
+      // Group by week and label as Week 1, Week 2, etc.
+      const weeklyEmissions = allData.reduce((acc, item) => {
+        const date = new Date(item.date);
+        const weekStart = new Date(date);
+        weekStart.setDate(date.getDate() - date.getDay()); // Start of week (Sunday)
+        const weekKey = weekStart.toISOString().slice(0, 10); // YYYY-MM-DD format
+
+        if (!acc[weekKey]) {
+          acc[weekKey] = { emissions: 0, methane: 0, methane_co2e: 0, target: 0 };
+        }
+        acc[weekKey].emissions += (item.total_carbon_emission || 0) / 1000; // Convert kg to tonnes
+        acc[weekKey].methane += (item.methane_emissions_ch4 || 0) / 1000; // Convert kg to tonnes CH4
+        acc[weekKey].methane_co2e += (item.methane_emissions_co2e || 0) / 1000; // Convert kg to tonnes CO2e
+        return acc;
+      }, {});
+
+      const sortedWeeks = Object.keys(weeklyEmissions).sort();
+      periodEmissions = sortedWeeks.map((weekKey, index) => ({
+        period: `Week ${index + 1}`,
+        emissions: weeklyEmissions[weekKey].emissions,
+        methane: weeklyEmissions[weekKey].methane,
+        methane_co2e: weeklyEmissions[weekKey].methane_co2e,
+        target: 0
+      }));
+    } else {
+      // Group by month for monthly period
+      const monthlyEmissions = allData.reduce((acc, item) => {
+        const month = item.date.toISOString().slice(0, 7); // YYYY-MM
+        if (!acc[month]) {
+          acc[month] = { emissions: 0, methane: 0, methane_co2e: 0, target: 0 };
+        }
+        acc[month].emissions += (item.total_carbon_emission || 0) / 1000; // Convert kg to tonnes
+        acc[month].methane += (item.methane_emissions_ch4 || 0) / 1000; // Convert kg to tonnes CH4
+        acc[month].methane_co2e += (item.methane_emissions_co2e || 0) / 1000; // Convert kg to tonnes CO2e
+        return acc;
+      }, {});
+
+      // Generate all months in the last 7 months range (to include all months with data)
+      const allMonths = [];
+      let current = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+      for (let i = 0; i < 7; i++) {
+        allMonths.push(current.toISOString().slice(0, 7));
+        current.setMonth(current.getMonth() + 1);
+      }
+
+      periodEmissions = allMonths.map(month => ({
+        period: month,
+        emissions: monthlyEmissions[month]?.emissions || 0,
+        methane: monthlyEmissions[month]?.methane || 0,
+        methane_co2e: monthlyEmissions[month]?.methane_co2e || 0,
+        target: monthlyEmissions[month]?.target || 0
+      }));
+    }
+
+    // Placeholder for recent activities and alerts
+    const recentActivities = allData.slice(-5).map((item, index) => ({
+      id: index + 1,
+      type: 'Emission Data Entry',
+      mine: item.mineName,
+      date: item.date.toISOString().split('T')[0],
+      status: 'verified'
+    }));
+
+    const alerts = totalEmissions === 0 ? [{
+      id: 1,
+      type: 'info',
+      message: 'No emission data found. Please add emission data to view dashboard.',
+      time: 'Now'
+    }] : [];
+
+    res.json({
+        overview: { totalMines, activeMines, totalEmissions, targetReduction, currentReduction },
+        chartData,
         scopeBreakdown: [
-            { name: 'Scope 1', value: scopeBreakdown.scope1 },
-            { name: 'Scope 2', value: scopeBreakdown.scope2 },
-            { name: 'Scope 3', value: scopeBreakdown.scope3 },
-        ]
+            { name: 'Scope 1', value: scopeBreakdown.scope1 / 1000 },
+            { name: 'Scope 2', value: scopeBreakdown.scope2 / 1000 },
+            { name: 'Scope 3', value: scopeBreakdown.scope3 / 1000 },
+            { name: 'Methane', value: scopeBreakdown.methane / 1000 },
+        ],
+        monthlyEmissions: periodEmissions,
+        recentActivities,
+        alerts
     });
 
   } catch (err) {
@@ -209,6 +366,18 @@ app.get('/api/dashboard', async (req, res) => {
   }
 });
 
+// POST /api/migrate - Trigger migration process
+app.post('/api/migrate', async (req, res) => {
+  try {
+    console.log('🚀 Starting migration from API...');
+    await generateDummyData();
+    console.log('✅ Migration completed successfully!');
+    res.json({ message: 'Migration completed successfully!' });
+  } catch (err) {
+    console.error('❌ Migration error:', err);
+    res.status(500).json({ error: 'Migration failed: ' + err.message });
+  }
+});
 
 // Seeding initial mine data (if needed)
 const seedMines = async () => {
