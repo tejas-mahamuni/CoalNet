@@ -124,4 +124,14 @@ export const api = {
   getForecastReport: async (mineId: string, horizon: number = 7) => {
     return await api.get(`forecast/report/${mineId}`, { horizon });
   },
+
+  // Method for fetching AQI data for a mine
+  getAqi: async (mineId: string) => {
+    return await api.get(`aqi/${mineId}`);
+  },
+
+  // Method for fetching home page stats
+  getHomeStats: async () => {
+    return await api.get('home-stats');
+  },
 };

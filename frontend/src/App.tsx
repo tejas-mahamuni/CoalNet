@@ -4,16 +4,17 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
-import Navbar from "./components/Navbar";
-import ProtectedRoute from "./components/ProtectedRoute";
-import AuthForm from "./components/AuthForm";
-import Index from "./pages/Index";
-import DashboardPage from "./pages/DashboardPage";
-import InputPage from "./pages/InputPage";
-import UploadPage from "./pages/UploadPage";
-import VisualizationPage from "./pages/VisualizationPage";
-import UserPage from "./pages/UserPage";
-import NotFound from "./pages/NotFound";
+import Navbar from "@/components/Navbar";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import AuthForm from "@/components/AuthForm";
+import Index from "@/pages/Index";
+import DemoPage from "@/pages/DemoPage";
+import DashboardPage from "@/pages/DashboardPage";
+import InputPage from "@/pages/InputPage";
+import PathwaysPage from "@/pages/PathwaysPage";
+import VisualizationPage from "@/pages/VisualizationPage";
+import UserPage from "@/pages/UserPage";
+import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<AuthForm />} />
+            <Route path="/demo" element={<DemoPage />} />
             <Route
               path="/dashboard"
               element={
@@ -45,10 +47,10 @@ const App = () => (
               }
             />
             <Route
-              path="/upload"
+              path="/pathways"
               element={
                 <ProtectedRoute>
-                  <UploadPage />
+                  <PathwaysPage />
                 </ProtectedRoute>
               }
             />

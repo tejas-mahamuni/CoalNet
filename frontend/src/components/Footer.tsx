@@ -1,4 +1,4 @@
-import { Leaf, Github, Twitter, Linkedin, Mail } from "lucide-react";
+import { Leaf, Github, Twitter, Instagram, Mail } from "lucide-react";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -46,16 +46,16 @@ const Footer = () => {
           <div className="space-y-4">
             <h3 className="font-semibold">Connect</h3>
             <div className="flex gap-3">
-              <a href="#" className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground smooth-transition">
+              <a href="https://github.com/tejas-mahamuni" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground smooth-transition">
                 <Github className="w-5 h-5" />
               </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground smooth-transition">
+              <a href="https://www.instagram.com/smudge_7_" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground smooth-transition">
+                <Instagram className="w-5 h-5" />
+              </a>
+              <a href="https://x.com/iTejas_07" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground smooth-transition">
                 <Twitter className="w-5 h-5" />
               </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground smooth-transition">
-                <Linkedin className="w-5 h-5" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground smooth-transition">
+              <a href="mailto:tejasmahamuni16@gmail.com" className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground smooth-transition">
                 <Mail className="w-5 h-5" />
               </a>
             </div>

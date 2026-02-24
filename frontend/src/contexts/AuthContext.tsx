@@ -7,8 +7,9 @@ import {
   onAuthStateChanged,
   updateProfile,
   sendPasswordResetEmail,
+  signInWithPopup,
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, googleProvider } from '@/lib/firebase';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -16,6 +17,7 @@ interface AuthContextType {
   signup: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   loading: boolean;
 }
 
@@ -50,6 +52,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const loginWithGoogle = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error('Google login error:', error);
+      throw error;
+    }
+  };
+
   const logout = async () => {
     try {
       await signOut(auth);
@@ -77,7 +88,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     try {
-      const unsubscribe = onAuthStateChanged(auth, (user) => {
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
         try {
           console.log('Auth state changed:', user ? 'User logged in' : 'User logged out');
           setCurrentUser(user);
@@ -101,6 +112,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signup,
     logout,
     resetPassword,
+    loginWithGoogle,
     loading,
   };
 

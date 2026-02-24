@@ -1,5 +1,5 @@
 // FULL RESTORE + FIXES (FINAL)
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -24,7 +24,8 @@ import {
   BarChart3,
   LineChart as LineChartIcon,
   Zap,
-  Flame
+  Flame,
+  Wind
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,34 @@ const DashboardPage = () => {
   const [isPieChartMaximized, setIsPieChartMaximized] = useState(false);
   const [isLeaderboardMaximized, setIsLeaderboardMaximized] = useState(false);
   const [isWaterfallMaximized, setIsWaterfallMaximized] = useState(false);
+
+  // AQI state
+  const [aqiData, setAqiData] = useState<any>(null);
+  const [aqiLoading, setAqiLoading] = useState(false);
+
+  // Fetch AQI when a specific mine is selected
+  useEffect(() => {
+    if (selectedMine === 'all' || !mines.length) {
+      setAqiData(null);
+      return;
+    }
+    const selectedMineObj = mines.find((m: any) => m.name === selectedMine);
+    if (!selectedMineObj) { setAqiData(null); return; }
+
+    const fetchAqi = async () => {
+      setAqiLoading(true);
+      try {
+        const data = await api.getAqi(selectedMineObj._id);
+        setAqiData(data);
+      } catch (err) {
+        console.error('AQI fetch error:', err);
+        setAqiData(null);
+      } finally {
+        setAqiLoading(false);
+      }
+    };
+    fetchAqi();
+  }, [selectedMine, mines]);
 
   // Color palette for pie chart
   const pieColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1', '#d084d0'];
@@ -144,24 +173,42 @@ const DashboardPage = () => {
   }, [mineLeaderboard]);
 
   const heatmapData = useMemo(() => {
-    if (!dashboardData?.chartData) return [];
-    // Just a sample heatmap structure based on available data
-    // Group by Mine and Month
-    const map: any = {};
-    dashboardData.chartData.forEach((item: any) => {
-      const month = item.date.substring(0, 7); // YYYY-MM
-      const key = `${item.mineName}-${month}`;
-      if(!map[key]) map[key] = 0;
-      map[key] += item.totalEmissions;
+    if (!dashboardData?.chartData || !mines.length) return [];
+
+    // Build a map from mine name to its state
+    const mineStateMap: Record<string, string> = {};
+    mines.forEach((m: any) => {
+      mineStateMap[m.name] = m.state || 'Unknown';
     });
 
-    const result = Object.entries(map).map(([key, value]) => {
-      const [mine, month] = key.split(/-(.+)/); // Split only on first hyphen
-      return { mine, month, value: (value as number) / 1000 };
+    // Calculate total emissions per mine
+    const mineEmissions: Record<string, number> = {};
+    dashboardData.chartData.forEach((item: any) => {
+      if (!mineEmissions[item.mineName]) mineEmissions[item.mineName] = 0;
+      mineEmissions[item.mineName] += item.totalEmissions;
     });
-    
-    return result.sort((a: any, b: any) => b.value - a.value).slice(0, 50); // Top 50 
-  }, [dashboardData]);
+
+    // Group mines by state
+    const stateGroups: Record<string, { mine: string; emissions: number }[]> = {};
+    Object.entries(mineEmissions).forEach(([mineName, emissions]) => {
+      const state = mineStateMap[mineName] || 'Unknown';
+      if (!stateGroups[state]) stateGroups[state] = [];
+      stateGroups[state].push({ mine: mineName, emissions: emissions as number });
+    });
+
+    // Sort mines within each state by emissions (desc)
+    Object.values(stateGroups).forEach(group =>
+      group.sort((a, b) => b.emissions - a.emissions)
+    );
+
+    return Object.entries(stateGroups)
+      .map(([state, minesList]) => ({
+        state,
+        mines: minesList,
+        totalEmissions: minesList.reduce((s, m) => s + m.emissions, 0),
+      }))
+      .sort((a, b) => b.totalEmissions - a.totalEmissions);
+  }, [dashboardData, mines]);
 
 
   // Helper Components
@@ -366,6 +413,123 @@ const DashboardPage = () => {
           delay={0.4} 
         />
       </div>
+
+      {/* AQI Report — shown only when a specific mine is selected */}
+      {selectedMine !== 'all' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.5 }}
+        >
+          <Card className="glass-effect border-white/20 overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-transparent to-green-500/5 pointer-events-none rounded-xl" />
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center">
+                    <Wind className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle>Air Quality Index (AQI)</CardTitle>
+                    <CardDescription>
+                      Estimated air quality near {selectedMine} based on emission data
+                    </CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {aqiLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                  <span className="ml-3 text-muted-foreground">Calculating AQI...</span>
+                </div>
+              ) : aqiData ? (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* AQI Gauge */}
+                  <div className="flex flex-col items-center justify-center p-6 rounded-xl border border-white/10" style={{
+                    background: `linear-gradient(135deg, ${aqiData.color}10, ${aqiData.color}05)`
+                  }}>
+                    <div className="relative w-36 h-36 rounded-full flex items-center justify-center mb-4" style={{
+                      background: `conic-gradient(${aqiData.color} ${Math.min(aqiData.aqi / 5, 100)}%, transparent 0)`,
+                      padding: '8px',
+                    }}>
+                      <div className="w-full h-full rounded-full bg-background flex flex-col items-center justify-center">
+                        <span className="text-4xl font-bold" style={{ color: aqiData.color }}>{aqiData.aqi}</span>
+                        <span className="text-xs text-muted-foreground">AQI</span>
+                      </div>
+                    </div>
+                    <span className="text-lg font-bold mb-1" style={{ color: aqiData.color }}>
+                      {aqiData.category}
+                    </span>
+                    <span className="text-xs text-muted-foreground text-center max-w-[200px]">
+                      {aqiData.healthAdvice}
+                    </span>
+                    <div className="mt-4 flex items-center gap-2 text-sm">
+                      <AlertCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-muted-foreground">Dominant: <strong>{aqiData.dominantPollutant}</strong></span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                      <MapPin className="w-3 h-3" />
+                      <span>{aqiData.mine.location}, {aqiData.mine.state}</span>
+                    </div>
+                  </div>
+
+                  {/* Pollutant Details Grid */}
+                  <div className="lg:col-span-2 grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {[
+                      { key: 'pm25', label: 'PM2.5', desc: 'Fine particles', maxVal: 250 },
+                      { key: 'pm10', label: 'PM10', desc: 'Coarse particles', maxVal: 400 },
+                      { key: 'so2', label: 'SO₂', desc: 'Sulfur dioxide', maxVal: 200 },
+                      { key: 'no2', label: 'NO₂', desc: 'Nitrogen dioxide', maxVal: 200 },
+                      { key: 'co', label: 'CO', desc: 'Carbon monoxide', maxVal: 10 },
+                      { key: 'o3', label: 'O₃', desc: 'Ozone', maxVal: 150 },
+                    ].map((pollutant) => {
+                      const p = aqiData.pollutants[pollutant.key];
+                      if (!p) return null;
+                      const pct = Math.min(100, (p.value / pollutant.maxVal) * 100);
+                      const hue = (1 - Math.min(1, pct / 100)) * 120;
+                      const barColor = `hsl(${hue}, 70%, 50%)`;
+
+                      return (
+                        <div key={pollutant.key} className="p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] transition-colors">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-bold">{pollutant.label}</span>
+                            {p.subIndex !== undefined && (
+                              <span className="text-xs px-2 py-0.5 rounded-full" style={{
+                                backgroundColor: `${barColor}20`, color: barColor
+                              }}>
+                                AQI {p.subIndex}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-2xl font-bold mb-1">{p.value} <span className="text-xs font-normal text-muted-foreground">{p.unit}</span></p>
+                          <p className="text-xs text-muted-foreground mb-3">{pollutant.desc}</p>
+                          {/* Bar */}
+                          <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${pct}%` }}
+                              transition={{ duration: 0.8, delay: 0.2 }}
+                              className="h-full rounded-full"
+                              style={{ backgroundColor: barColor }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Wind className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>Could not retrieve AQI data for this mine.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Row 2: Leaderboard & Scope Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -576,33 +740,113 @@ const DashboardPage = () => {
           </motion.div>
        </div>
 
-       {/* Row 5: Heatmap & Others (Visualizing Grid) */}
+       {/* Row 5: Regional Emission Heatmap */}
        <div className="grid grid-cols-1">
           <motion.div initial={{opacity:0}} whileInView={{opacity:1}} viewport={{once:true}}>
              <Card className="glass-effect border-white/20">
                <CardHeader>
-                 <CardTitle>Emission Intensity Heatmap</CardTitle>
-                 <CardDescription>Mines vs. Time (Intensity - Green: Low, Red: High)</CardDescription>
+                 <CardTitle className="flex items-center gap-2">
+                   <MapPin className="w-5 h-5 text-purple-500" />
+                   Regional Emission Heatmap
+                 </CardTitle>
+                 <CardDescription>
+                   Mines grouped by state/region — Color intensity: <span className="text-green-500 font-semibold">Green (Low)</span> → <span className="text-yellow-500 font-semibold">Yellow (Medium)</span> → <span className="text-red-500 font-semibold">Red (High)</span>
+                 </CardDescription>
                </CardHeader>
                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                     {heatmapData.map((item: any, idx: number) => {
-                       const maxVal = 10; 
-                       const normalized = Math.min(1, item.value / maxVal);
-                       const hue = (1 - normalized) * 120;
-                       
-                       return (
-                       <div key={idx} className="aspect-video rounded-md flex flex-col items-center justify-center text-xs p-2 transition-all hover:scale-105 cursor-pointer"
-                            style={{
-                              backgroundColor: `hsla(${hue}, 70%, 50%, 0.8)`,
-                              color: 'white'
-                            }}>
-                          <span className="font-bold truncate w-full text-center">{item.mine}</span>
-                          <span className="opacity-80">{item.month}</span>
-                          <span>{item.value.toFixed(1)}t</span>
-                       </div>
-                     )})}
-                  </div>
+                 {/* Color legend bar */}
+                 <div className="flex items-center gap-3 mb-6">
+                   <span className="text-xs text-muted-foreground">Low</span>
+                   <div className="flex-1 h-3 rounded-full" style={{
+                     background: 'linear-gradient(to right, hsl(120,70%,45%), hsl(60,80%,50%), hsl(30,80%,50%), hsl(0,70%,50%))'
+                   }} />
+                   <span className="text-xs text-muted-foreground">High</span>
+                 </div>
+
+                 {(() => {
+                   // Calculate global min/max for consistent color mapping
+                   const allEmissions = heatmapData.flatMap((s: any) => s.mines.map((m: any) => m.emissions));
+                   const globalMin = Math.min(...allEmissions);
+                   const globalMax = Math.max(...allEmissions);
+                   const range = globalMax - globalMin || 1;
+
+                   return (
+                     <div className="space-y-6">
+                       {heatmapData.map((stateData: any, si: number) => {
+                         const stateNorm = (stateData.totalEmissions / stateData.mines.length - globalMin) / range;
+                         const stateHue = (1 - Math.min(1, stateNorm)) * 120;
+
+                         return (
+                           <motion.div
+                             key={stateData.state}
+                             initial={{ opacity: 0, x: -20 }}
+                             animate={{ opacity: 1, x: 0 }}
+                             transition={{ delay: si * 0.1 }}
+                             className="rounded-xl border border-white/10 overflow-hidden"
+                           >
+                             {/* State header */}
+                             <div
+                               className="px-5 py-3 flex items-center justify-between"
+                               style={{
+                                 background: `linear-gradient(135deg, hsla(${stateHue}, 60%, 50%, 0.15), hsla(${stateHue}, 60%, 50%, 0.05))`
+                               }}
+                             >
+                               <div className="flex items-center gap-2">
+                                 <MapPin className="w-4 h-4" style={{ color: `hsl(${stateHue}, 70%, 50%)` }} />
+                                 <span className="font-semibold text-sm">{stateData.state}</span>
+                                 <span className="text-xs text-muted-foreground ml-2">
+                                   ({stateData.mines.length} mine{stateData.mines.length > 1 ? 's' : ''})
+                                 </span>
+                               </div>
+                               <span className="text-sm font-bold" style={{ color: `hsl(${stateHue}, 70%, 50%)` }}>
+                                 {(stateData.totalEmissions / 1000).toFixed(1)} tCO₂e
+                               </span>
+                             </div>
+
+                             {/* Mine tiles within state */}
+                             <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                               {stateData.mines.map((mineItem: any, mi: number) => {
+                                 const normalized = Math.min(1, (mineItem.emissions - globalMin) / range);
+                                 const hue = (1 - normalized) * 120; // 120=green → 0=red
+                                 const saturation = 65 + normalized * 15;
+                                 const lightness = 45 + (1 - normalized) * 10;
+                                 const bgColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+                                 const pct = globalMax > 0 ? ((mineItem.emissions / globalMax) * 100).toFixed(0) : '0';
+
+                                 return (
+                                   <motion.div
+                                     key={mineItem.mine}
+                                     initial={{ scale: 0.9, opacity: 0 }}
+                                     animate={{ scale: 1, opacity: 1 }}
+                                     transition={{ delay: si * 0.1 + mi * 0.05 }}
+                                     className="rounded-lg p-3 cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg hover:shadow-black/20 relative overflow-hidden"
+                                     style={{ backgroundColor: bgColor }}
+                                   >
+                                     {/* Intensity bar at bottom */}
+                                     <div
+                                       className="absolute bottom-0 left-0 h-1 rounded-b-lg transition-all"
+                                       style={{
+                                         width: `${pct}%`,
+                                         backgroundColor: `hsla(${hue}, 100%, 30%, 0.6)`
+                                       }}
+                                     />
+                                     <p className="text-white font-bold text-sm truncate drop-shadow-sm">{mineItem.mine}</p>
+                                     <p className="text-white/90 text-xs mt-1 drop-shadow-sm">
+                                       {(mineItem.emissions / 1000).toFixed(1)} tCO₂e
+                                     </p>
+                                     <p className="text-white/70 text-[10px] mt-0.5">
+                                       {pct}% of max
+                                     </p>
+                                   </motion.div>
+                                 );
+                               })}
+                             </div>
+                           </motion.div>
+                         );
+                       })}
+                     </div>
+                   );
+                 })()}
                </CardContent>
              </Card>
           </motion.div>

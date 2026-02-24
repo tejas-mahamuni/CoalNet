@@ -25,11 +25,17 @@ const forecastRoutes = require('./routes/forecast');
 const insightsRoutes = require('./routes/insights');
 const comparisonRoutes = require('./routes/comparison');
 const reportRoutes = require('./routes/report');
+const aqiRoutes = require('./routes/aqi');
+const homeStatsRoutes = require('./routes/homeStats');
+// const userRoutes = require('./routes/users');
 
 app.use('/api/mines', mineRoutes);
 app.use('/api/emissions', emissionRoutes);
+// app.use('/api/users', userRoutes);
 app.use('/api', dashboardRoutes); // handles /api/dashboard and /api/visualization
 app.use('/api', systemRoutes);    // handles /api/upload, /api/export, /api/migrate
+app.use('/api/aqi', aqiRoutes);
+app.use('/api/home-stats', homeStatsRoutes);
 // IMPORTANT: Specific forecast sub-routes MUST come before the generic /:mineId route
 app.use('/api/forecast/insights', insightsRoutes);
 app.use('/api/forecast/compare', comparisonRoutes);

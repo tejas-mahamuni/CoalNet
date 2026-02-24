@@ -1,5 +1,5 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
+import { getAuth, type Auth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getAnalytics, type Analytics } from 'firebase/analytics';
 
@@ -37,6 +37,7 @@ if (!hasRequiredConfig) {
 let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
+let googleProvider: GoogleAuthProvider;
 
 try {
   // Use placeholder config if real config is missing
@@ -53,6 +54,7 @@ try {
   app = initializeApp(configToUse);
   auth = getAuth(app);
   db = getFirestore(app);
+  googleProvider = new GoogleAuthProvider();
 } catch (error) {
   console.error('Failed to initialize Firebase:', error);
   // Create mock objects to prevent app crash
@@ -62,7 +64,7 @@ try {
 }
 
 // Export Firebase services
-export { auth };
+export { auth, googleProvider };
 export { db };
 
 // Initialize Analytics (only if available)
