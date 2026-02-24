@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, LayoutDashboard, FileInput, Upload, BarChart3, User, LogOut } from "lucide-react";
+import { Home, LayoutDashboard, FileInput, Upload, Brain, User, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +20,7 @@ const Navbar = () => {
     { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
     { name: "Input", path: "/input", icon: FileInput },
     { name: "Upload", path: "/upload", icon: Upload },
-    { name: "Visualization", path: "/visualization", icon: BarChart3 },
+    { name: "Forecasting", path: "/visualization", icon: Brain },
   ];
 
   const handleLogout = async () => {

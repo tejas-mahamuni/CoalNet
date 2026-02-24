@@ -1,7 +1,7 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getAnalytics } from 'firebase/analytics';
+import { initializeApp, type FirebaseApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getAnalytics, type Analytics } from 'firebase/analytics';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -34,9 +34,9 @@ if (!hasRequiredConfig) {
 }
 
 // Initialize Firebase with error handling
-let app;
-let auth;
-let db;
+let app: FirebaseApp;
+let auth: Auth;
+let db: Firestore;
 
 try {
   // Use placeholder config if real config is missing
@@ -56,9 +56,9 @@ try {
 } catch (error) {
   console.error('Failed to initialize Firebase:', error);
   // Create mock objects to prevent app crash
-  app = null as any;
-  auth = null as any;
-  db = null as any;
+  app = {} as FirebaseApp;
+  auth = {} as Auth;
+  db = {} as Firestore;
 }
 
 // Export Firebase services
@@ -66,7 +66,7 @@ export { auth };
 export { db };
 
 // Initialize Analytics (only if available)
-let analytics;
+let analytics: Analytics | undefined;
 try {
   if (app && typeof window !== 'undefined' && import.meta.env.VITE_FIREBASE_MEASUREMENT_ID) {
     analytics = getAnalytics(app);

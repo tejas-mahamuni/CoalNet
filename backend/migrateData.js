@@ -19,44 +19,8 @@ const connectDB = async () => {
   }
 };
 
-// Mine Schema
-const mineSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
-  location: { type: String, required: true },
-  state: { type: String, required: true },
-  coordinates: {
-    lat: Number,
-    lng: Number,
-  },
-  status: { type: String, enum: ['active', 'inactive'], default: 'active' },
-});
-
-const Mine = mongoose.model('Mine', mineSchema);
-
-// Daily Emission Schema for mine-specific collections
-const dailyEmissionSchema = new mongoose.Schema({
-  date: { type: Date, required: true, unique: true },
-  fuel_used: { type: Number, required: true },
-  electricity_used: { type: Number, required: true },
-  explosives_used: { type: Number, default: 0 },
-  methane_emissions_ch4: { type: Number, required: true },
-  transport_fuel_used: { type: Number, required: true },
-  fuel_emission: { type: Number, required: true },
-  electricity_emission: { type: Number, required: true },
-  explosives_emission: { type: Number, required: true },
-  methane_emissions_co2e: { type: Number, required: true },
-  transport_emission: { type: Number, required: true },
-  scope1: { type: Number, required: true },
-  scope2: { type: Number, required: true },
-  scope3: { type: Number, required: true },
-  total_carbon_emission: { type: Number, required: true },
-});
-
-// Function to get or create a model for a mine's emission data
-const getMineEmissionModel = (mineName) => {
-  const collectionName = mineName.replace(/\s+/g, '_').toLowerCase();
-  return mongoose.models[collectionName] || mongoose.model(collectionName, dailyEmissionSchema);
-};
+const Mine = require('./models/Mine');
+const { getMineEmissionModel } = require('./models/Emission');
 
 // Migration function
 const migrateExistingData = async () => {
@@ -132,69 +96,116 @@ const migrateExistingData = async () => {
   }
 };
 
-// Generate dummy data for better visualization
+// Generate demonstration data with distinct emission profiles per mine
 const generateDummyData = async () => {
   try {
-    console.log('🎲 Generating dummy data for visualization...');
+    console.log('🎲 Generating demonstration data with distinct mine profiles...');
 
     const mines = await Mine.find({ status: 'active' });
     const endDate = new Date();
     const startDate = new Date();
     startDate.setMonth(endDate.getMonth() - 6); // Past 6 months
 
-    // Target total emissions per mine: 4,000 - 11,000 tonnes (for ~180 days, ~22-61 tonnes/day)
-    // Based on real Indian coal mine emissions: 72k-593k tonnes annually
-    const targetEmissionsPerMine = Math.random() * 7000 + 4000; // 4k-11k tonnes for 6 months
+    // Profiles cycle for each mine
+    const profiles = ['uptrend', 'downtrend', 'anomaly', 'seasonal', 'stable'];
 
-    for (const mine of mines) {
+    for (let mi = 0; mi < mines.length; mi++) {
+      const mine = mines[mi];
+      const profile = profiles[mi % profiles.length];
       const MineEmission = getMineEmissionModel(mine.name);
 
-      // Always clear existing data and regenerate fresh data for past 6 months
+      // Always clear existing data and regenerate
       await MineEmission.deleteMany({});
-      console.log(`🗑️ Cleared existing data for ${mine.name}`);
+      console.log(`🗑️ Cleared data for ${mine.name}`);
 
-      // Calculate records needed for past 6 months
       const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-      const recordsNeeded = totalDays;
 
-      // Calculate average emissions per day to reach target
-      const avgEmissionsPerDay = targetEmissionsPerMine / totalDays;
+      // Base emission level varies per mine (800-1500 kg CO₂e/day)
+      const baseEmission = 800 + Math.random() * 700;
 
-      console.log(`🎯 Generating ${recordsNeeded} records for ${mine.name} (target: ${targetEmissionsPerMine.toFixed(0)} tonnes over ${totalDays} days)`);
+      console.log(`🎯 [${profile.toUpperCase()}] Generating ${totalDays} days for ${mine.name} (base: ${baseEmission.toFixed(0)} kg CO₂e/day)`);
 
       let currentDate = new Date(startDate);
       let generatedRecords = 0;
 
-      while (currentDate <= endDate && generatedRecords < recordsNeeded) {
+      // Pre-compute anomaly spike dates (for 'anomaly' profile)
+      const anomalyDays = new Set();
+      if (profile === 'anomaly') {
+        // 4-5 random spike days spread across the timeline
+        for (let s = 0; s < 5; s++) {
+          anomalyDays.add(Math.floor(Math.random() * totalDays * 0.7) + Math.floor(totalDays * 0.15));
+        }
+      }
+
+      while (currentDate <= endDate) {
         try {
-          // Skip if record already exists
-          const existing = await MineEmission.findOne({ date: currentDate });
-          if (existing) {
-            currentDate.setDate(currentDate.getDate() + 1);
-            continue;
+          const dayIndex = Math.ceil((currentDate - startDate) / (1000 * 60 * 60 * 24));
+          const dayOfWeek = currentDate.getDay(); // 0=Sun, 6=Sat
+
+          // ---- Calculate emission multiplier based on profile ----
+          let multiplier = 1.0;
+
+          switch (profile) {
+            case 'uptrend':
+              // Steady +0.5% daily growth compounded → ~2.5x over 180 days
+              multiplier = Math.pow(1.005, dayIndex);
+              // Add small daily noise
+              multiplier *= (0.92 + Math.random() * 0.16);
+              break;
+
+            case 'downtrend':
+              // Steady -0.3% daily decline → ~0.58x over 180 days
+              multiplier = Math.pow(0.997, dayIndex);
+              multiplier *= (0.92 + Math.random() * 0.16);
+              break;
+
+            case 'anomaly':
+              // Stable base with random spike days (3x-5x normal)
+              multiplier = 0.90 + Math.random() * 0.20; // normal noise
+              if (anomalyDays.has(dayIndex)) {
+                multiplier *= (3.0 + Math.random() * 2.0); // spike 3x-5x
+              }
+              break;
+
+            case 'seasonal':
+              // Strong weekday/weekend pattern
+              if (dayOfWeek === 0 || dayOfWeek === 6) {
+                multiplier = 0.55 + Math.random() * 0.15; // Weekend: 55-70% of normal
+              } else {
+                multiplier = 0.95 + Math.random() * 0.20; // Weekday: 95-115%
+              }
+              // Add mild overall growth
+              multiplier *= (1 + dayIndex * 0.0005);
+              break;
+
+            case 'stable':
+            default:
+              // Pure random variation around base
+              multiplier = 0.80 + Math.random() * 0.40; // 80-120%
+              break;
           }
 
-          // Generate realistic emission data for 200-500 tonnes/day per mine
-          // Based on real Indian coal mine data: 72k-593k tonnes annually per mine
-          const baseFuel = Math.random() * 400 + 100; // 100-500 litres (realistic scale)
-          const baseElectricity = Math.random() * 200 + 50; // 50-250 kWh (realistic scale)
-          const baseExplosives = Math.random() * 10 + 1; // 1-11 kg (realistic scale)
-          const baseTransport = Math.random() * 200 + 50; // 50-250 litres/km (realistic scale)
+          const totalTarget = baseEmission * multiplier;
 
-          // Add some variation to reach target emissions
-          const variationFactor = Math.random() * 0.4 + 0.8; // 0.8-1.2
-          const fuel_used = baseFuel * variationFactor;
-          const electricity_used = baseElectricity * variationFactor;
-          const explosives_used = baseExplosives * variationFactor;
-          const transport_fuel_used = baseTransport * variationFactor;
+          // Distribute into sub-emissions (proportional breakdown)
+          const fuelPct = 0.35 + Math.random() * 0.05;      // ~35-40%
+          const electricityPct = 0.15 + Math.random() * 0.05; // ~15-20%
+          const explosivesPct = 0.02 + Math.random() * 0.01;  // ~2-3%
+          const transportPct = 0.20 + Math.random() * 0.05;   // ~20-25%
+          const methanePct = 1 - fuelPct - electricityPct - explosivesPct - transportPct; // ~15-25%
 
-          // Emission calculations (in kg CO2e, consistent with index.js)
-          const fuel_emission = fuel_used * 2.68;
-          const explosives_emission = explosives_used * 1.5; // Fixed to match index.js
-          const electricity_emission = electricity_used * 0.82;
-          const transport_emission = transport_fuel_used * 2.68;
-          const methane_emissions_ch4 = fuel_used * 0.02;
-          const methane_emissions_co2e = methane_emissions_ch4 * 28; // Updated to 28 as per index.js
+          const fuel_emission = totalTarget * fuelPct;
+          const electricity_emission = totalTarget * electricityPct;
+          const explosives_emission = totalTarget * explosivesPct;
+          const transport_emission = totalTarget * transportPct;
+          const methane_emissions_co2e = totalTarget * methanePct;
+
+          // Back-calculate usage from emission factors
+          const fuel_used = fuel_emission / 2.68;
+          const electricity_used = electricity_emission / 0.82;
+          const explosives_used = explosives_emission / 1.5;
+          const transport_fuel_used = transport_emission / 2.68;
+          const methane_emissions_ch4 = methane_emissions_co2e / 28;
 
           const scope1 = fuel_emission + explosives_emission + methane_emissions_co2e;
           const scope2 = electricity_emission;
@@ -223,27 +234,27 @@ const generateDummyData = async () => {
           generatedRecords++;
 
           if (generatedRecords % 50 === 0) {
-            console.log(`📝 Generated ${generatedRecords}/${recordsNeeded} records for ${mine.name}`);
+            console.log(`📝 ${mine.name}: ${generatedRecords}/${totalDays} records`);
           }
 
         } catch (err) {
           if (err.code === 11000) {
-            console.log(`⚠️ Duplicate date for ${mine.name}, skipping...`);
+            // duplicate — skip
           } else {
-            console.error(`❌ Error generating data for ${mine.name}:`, err.message);
+            console.error(`❌ Error for ${mine.name}:`, err.message);
           }
         }
 
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      console.log(`✅ Generated ${generatedRecords} records for ${mine.name}`);
+      console.log(`✅ [${profile.toUpperCase()}] ${generatedRecords} records for ${mine.name}`);
     }
 
-    console.log('🎉 Dummy data generation completed!');
+    console.log('🎉 Demonstration data generation completed!');
   } catch (err) {
-    console.error('❌ Dummy data generation error:', err);
-    throw err; // Re-throw to handle in API
+    console.error('❌ Data generation error:', err);
+    throw err;
   }
 };
 
@@ -251,15 +262,12 @@ const generateDummyData = async () => {
 const runMigration = async () => {
   await connectDB();
 
-  console.log('🚀 Starting migration process...');
+  console.log('🚀 Starting data generation process...');
 
-  // First migrate existing data
-  await migrateExistingData();
-
-  // Then generate dummy data
+  // Generate demonstration data with distinct mine profiles
   await generateDummyData();
 
-  console.log('🎯 Migration process completed successfully!');
+  console.log('🎯 Data generation completed successfully!');
   process.exit(0);
 };
 
